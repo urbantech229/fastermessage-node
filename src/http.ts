@@ -13,7 +13,7 @@ import {
   ServerError,
 } from './errors.js';
 
-export const VERSION = '0.1.0';
+export const VERSION = '0.1.1';
 
 /** Un même appel rejoué garde sa clé : c'est ce qui rend une reprise sans risque. */
 const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
@@ -81,6 +81,8 @@ export class Requester {
           method,
           headers,
           ...(payload === undefined ? {} : { body: payload }),
+          // Une redirection recopierait la clé d'API vers l'adresse de destination.
+          redirect: 'manual',
           signal: options.signal ? AbortSignal.any([options.signal, timeout]) : timeout,
         });
         text = await response.text();
@@ -95,7 +97,7 @@ export class Requester {
         continue;
       }
 
-      if (response.status < 400) return decode<T>(response, text);
+      if (response.status < 300) return decode<T>(response, text);
 
       const failure = toError(response, text);
       const wait = retryDelay(failure, attempt);

@@ -1,23 +1,45 @@
 {
   "name": "@fastermessage/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "SDK Node.js officiel de l'API FasterMessage v2 : SMS, e-mail, OTP, contacts et webhooks.",
   "license": "MIT",
-  "keywords": ["fastermessage", "sms", "email", "otp", "api", "sdk"],
+  "keywords": [
+    "fastermessage",
+    "sms",
+    "email",
+    "otp",
+    "api",
+    "sdk"
+  ],
   "homepage": "https://www.fastermessage.com/docs",
-  "repository": { "type": "git", "url": "git+https://github.com/urbantech229/fastermessage-node.git" },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/urbantech229/fastermessage-node.git"
+  },
   "type": "module",
-  "engines": { "node": ">=20.3" },
+  "engines": {
+    "node": ">=20.3"
+  },
   "main": "./dist/cjs/index.js",
   "module": "./dist/esm/index.js",
   "types": "./dist/esm/index.d.ts",
   "exports": {
     ".": {
-      "import": { "types": "./dist/esm/index.d.ts", "default": "./dist/esm/index.js" },
-      "require": { "types": "./dist/cjs/index.d.ts", "default": "./dist/cjs/index.js" }
+      "import": {
+        "types": "./dist/esm/index.d.ts",
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
     }
   },
-  "files": ["dist", "LICENSE", "README.md"],
+  "files": [
+    "dist",
+    "LICENSE",
+    "README.md"
+  ],
   "sideEffects": false,
   "scripts": {
     "build": "node scripts/clean.mjs && tsc -p tsconfig.json && tsc -p tsconfig.cjs.json && node scripts/cjs-package.mjs",

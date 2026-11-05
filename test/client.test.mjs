@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHmac } from 'node:crypto';
+import { createServer } from 'node:http';
 import { describe, it } from 'node:test';
 import { inspect } from 'node:util';
 import {
@@ -237,6 +238,39 @@ describe('idempotence et reprises', () => {
     const { fm, calls } = monter([annule]);
     await assert.rejects(fm.sms.send({ to: '1', from: 'F', content: 'c' }, { signal: controle.signal }), (e) => e === motif);
     assert.equal(calls.length, 1);
+  });
+});
+
+describe('redirections', () => {
+  it('demande à fetch de ne jamais les suivre', async () => {
+    const { fm, calls } = monter([json(200, { balances: [] })]);
+    await fm.account.balance();
+    assert.equal(calls[0].redirect, 'manual');
+  });
+
+  it('une vraie redirection ne recopie pas la clé vers sa destination', async () => {
+    const recues = [];
+    const piege = createServer((req, res) => { recues.push(req.headers['x-api-key']); res.end('{}'); });
+    await new Promise((resolve) => piege.listen(0, '127.0.0.1', resolve));
+    const api = createServer((req, res) => {
+      res.writeHead(302, { Location: `http://127.0.0.1:${piege.address().port}/v2/balance` });
+      res.end();
+    });
+    await new Promise((resolve) => api.listen(0, '127.0.0.1', resolve));
+    try {
+      const fm = new FasterMessage({
+        username: 'a', password: 'b', apiKey: 'fm_live_secret', baseUrl: `http://127.0.0.1:${api.address().port}`, maxRetries: 0,
+      });
+      const erreur = await fm.account.balance().catch((e) => e);
+      assert.ok(erreur instanceof ApiError);
+      assert.equal(erreur.status, 302);
+      assert.deepEqual(recues, []);
+    } finally {
+      api.close();
+      piege.close();
+      api.closeAllConnections();
+      piege.closeAllConnections();
+    }
   });
 });
 
