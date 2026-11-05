@@ -1,6 +1,6 @@
 {
   "name": "@fastermessage/sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "SDK Node.js officiel de l'API FasterMessage v2 : SMS, e-mail, OTP, contacts et webhooks.",
   "license": "MIT",
   "keywords": [

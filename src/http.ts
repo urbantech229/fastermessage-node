@@ -13,7 +13,10 @@ import {
   ServerError,
 } from './errors.js';
 
-export const VERSION = '0.1.1';
+export const VERSION = '0.1.2';
+
+/** Au-delà, le SDK ne bloque pas votre programme : il rend la main avec RateLimitError. */
+const MAX_RETRY_AFTER_SECONDS = 60;
 
 /** Un même appel rejoué garde sa clé : c'est ce qui rend une reprise sans risque. */
 const MUTATING = new Set(['POST', 'PATCH', 'PUT', 'DELETE']);
@@ -52,6 +55,9 @@ export class Requester {
   }
 
   async request<T>(method: string, path: string, { query, body, options = {} }: Call = {}): Promise<T> {
+    checkHeader('idempotencyKey', options.idempotencyKey);
+    checkHeader('requestId', options.requestId);
+
     const url = this.#config.baseUrl + path + queryString(query);
     const headers: Record<string, string> = {
       Authorization: this.#config.authorization,
@@ -107,6 +113,12 @@ export class Requester {
   }
 }
 
+function checkHeader(name: string, value: string | undefined): void {
+  if (value !== undefined && !/^[\x20-\x7e]*$/.test(value)) {
+    throw new TypeError(`${name} contient des caractères invalides.`);
+  }
+}
+
 function queryString(query: object | undefined): string {
   if (!query) return '';
   const params = new URLSearchParams();
@@ -123,7 +135,10 @@ function queryString(query: object | undefined): string {
  * ne servirait à rien. Le 501 dit une fonction non servie, jamais une panne.
  */
 function retryDelay(failure: ApiError, attempt: number): number | null {
-  if (failure.status === 429) return failure.retryAfter === null ? null : failure.retryAfter * 1000;
+  if (failure.status === 429) {
+    if (failure.retryAfter === null || failure.retryAfter > MAX_RETRY_AFTER_SECONDS) return null;
+    return failure.retryAfter * 1000;
+  }
   if (failure.code === 'idempotency_key_in_flight') return backoff(attempt);
   if (failure.status >= 500 && failure.status !== 501) return backoff(attempt);
   return null;

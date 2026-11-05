@@ -3,6 +3,22 @@ import { Account, ContactGroups, Contacts, Email, Messages, OtpResource, Sms } f
 
 export const DEFAULT_BASE_URL = 'https://api.fastermessage.com';
 
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
+
+/** Les identifiants ne partent qu'en https, sauf vers la machine locale. */
+function checkedBaseUrl(value: string): string {
+  const message = 'baseUrl doit être une adresse https, sans identifiants (http seulement vers la machine locale).';
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new TypeError(message);
+  }
+  const allowed = url.protocol === 'https:' || (url.protocol === 'http:' && LOCAL_HOSTS.has(url.hostname));
+  if (!allowed || !url.hostname || url.username || url.password || url.search || url.hash) throw new TypeError(message);
+  return `${url.origin}${url.pathname}`.replace(/\/+$/, '');
+}
+
 export interface FasterMessageOptions {
   /** Identifiant d'API, compte débité. */
   username: string;
@@ -42,12 +58,17 @@ export class FasterMessage {
       throw new Error('Le SDK FasterMessage ne s’utilise pas dans un navigateur : vos identifiants y seraient publics.');
     }
 
+    if (!/^[\x21-\x7e]+$/.test(apiKey)) {
+      // Le message ne cite jamais la valeur : il finirait dans vos journaux.
+      throw new TypeError('La clé d’API contient des caractères invalides : vérifiez son copier-coller.');
+    }
+
     this.#testMode = apiKey.includes('_test_');
 
     const http = new Requester({
       authorization: `Basic ${Buffer.from(`${username}:${password}`).toString('base64')}`,
       apiKey,
-      baseUrl: (options.baseUrl ?? DEFAULT_BASE_URL).replace(/\/+$/, ''),
+      baseUrl: checkedBaseUrl(options.baseUrl ?? DEFAULT_BASE_URL),
       timeout: options.timeout ?? 30_000,
       maxRetries: Math.max(0, options.maxRetries ?? 2),
       ...(options.fetch ? { fetch: options.fetch } : {}),

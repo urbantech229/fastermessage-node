@@ -241,6 +241,68 @@ describe('idempotence et reprises', () => {
   });
 });
 
+describe('durcissement', () => {
+  const base = { username: 'a', password: 'b', apiKey: 'c' };
+
+  it('refuse un baseUrl non sûr, sans citer la valeur', () => {
+    for (const baseUrl of ['http://api.marque.test', 'file:///C:/Windows/win.ini', 'ftp://api.marque.test',
+      'https://compte:secret@api.marque.test', 'https://api.marque.test/?a=1', 'api.marque.test']) {
+      assert.throws(() => new FasterMessage({ ...base, baseUrl }), (e) => e instanceof TypeError && !e.message.includes('secret'));
+    }
+  });
+
+  it('accepte https et la machine locale', () => {
+    for (const baseUrl of ['https://api.marque.test', 'https://api.marque.test/x/', 'http://localhost:3001', 'http://127.0.0.1:9', 'http://[::1]:9']) {
+      new FasterMessage({ ...base, baseUrl });
+    }
+  });
+
+  it('refuse une clé invalide sans la citer', () => {
+    for (const apiKey of ['fm_test_SECRET\nX: y', 'fm_test_SECRET ', 'fm_test_SECRÉT']) {
+      assert.throws(() => new FasterMessage({ ...base, apiKey }), (e) => e instanceof TypeError && !e.message.includes('SECRET'));
+    }
+  });
+
+  it('contrôle les en-têtes fournis, sans rien envoyer', async () => {
+    const { fm, calls } = monter([]);
+    await assert.rejects(fm.sms.send({ to: '1', from: 'F', content: 'c' }, { idempotencyKey: 'cle\r\nX: y' }), TypeError);
+    await assert.rejects(fm.sms.send({ to: '1', from: 'F', content: 'c' }, { requestId: 'r\n' }), TypeError);
+    assert.equal(calls.length, 0);
+  });
+
+  it('refuse un identifiant de ressource vide ou en points', async () => {
+    const { fm, calls } = monter([]);
+    for (const id of ['', '.', '..']) {
+      await assert.rejects(async () => fm.contacts.get(id), TypeError);
+      await assert.rejects(async () => fm.contacts.delete(id), TypeError);
+      await assert.rejects(async () => fm.contactGroups.update(id, { name: 'n' }), TypeError);
+      await assert.rejects(async () => fm.messages.get(id), TypeError);
+    }
+    assert.equal(calls.length, 0);
+  });
+
+  it('accepte un identifiant qui contient des points', async () => {
+    const { fm, calls } = monter([json(200, {})]);
+    await fm.contacts.get('a..b');
+    assert.equal(calls[0].url, 'https://api.fastermessage.com/v2/contacts/a..b');
+  });
+
+  it('un Retry-After trop long rend la main', async () => {
+    const { fm, calls, sleeps } = monter([refus(429, 'rate_limited', {}, { 'Retry-After': '86400' })]);
+    const erreur = await fm.account.balance().catch((e) => e);
+    assert.ok(erreur instanceof RateLimitError);
+    assert.equal(erreur.retryAfter, 86400);
+    assert.deepEqual(sleeps, []);
+    assert.equal(calls.length, 1);
+  });
+
+  it('un Retry-After de 60 secondes est attendu', async () => {
+    const { fm, sleeps } = monter([refus(429, 'rate_limited', {}, { 'Retry-After': '60' }), json(200, { balances: [] })]);
+    await fm.account.balance();
+    assert.deepEqual(sleeps, [60000]);
+  });
+});
+
 describe('redirections', () => {
   it('demande à fetch de ne jamais les suivre', async () => {
     const { fm, calls } = monter([json(200, { balances: [] })]);

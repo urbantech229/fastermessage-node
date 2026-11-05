@@ -32,7 +32,7 @@ const message = await fm.sms.send({
 console.log(message.id, message.status); // queued
 ```
 
-Sur le domaine d'API de votre marque : `new FasterMessage({ ..., baseUrl: 'https://api.votre-marque.com' })`.
+Sur le domaine d'API de votre marque : `new FasterMessage({ ..., baseUrl: 'https://api.votre-marque.com' })`. L'adresse doit être en `https` : `http` n'est accepté que vers la machine locale.
 
 ## Ce que fait le SDK
 
@@ -61,7 +61,7 @@ WhatsApp et la voix ne sont pas encore servis par l'API v2.
 
 ## Rejeux sans double envoi
 
-Chaque écriture porte une clé `Idempotency-Key` générée. Le SDK rejoue seul, avec la même clé et deux fois au plus, une coupure réseau, un `5xx` (sauf `501`) et un `429` qui annonce `Retry-After`.
+Chaque écriture porte une clé `Idempotency-Key` générée. Le SDK rejoue seul, avec la même clé et deux fois au plus, une coupure réseau, un `5xx` (sauf `501`) et un `429` qui annonce `Retry-After` (60 secondes au plus : au-delà, il lève `RateLimitError` avec `retryAfter`).
 
 Passez votre propre clé pour survivre à un redémarrage de votre programme :
 

@@ -25,7 +25,11 @@ import type {
   UpdateContactParams,
 } from './types.js';
 
-const segment = encodeURIComponent;
+function segment(id: string): string {
+  // `..` changerait la route visée, et un identifiant vide viserait la collection.
+  if (id === '' || id === '.' || id === '..') throw new TypeError('Identifiant de ressource invalide.');
+  return encodeURIComponent(id);
+}
 
 /** Parcourt toutes les pages, en demandant la suivante seulement quand il le faut. */
 async function* paginate<T>(http: Requester, path: string, query: object): AsyncGenerator<T, void, undefined> {
