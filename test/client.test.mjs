@@ -145,6 +145,18 @@ describe('OTP', () => {
     assert.equal(calls[0].url, 'https://api.fastermessage.com/v2/otp/verify');
     assert.deepEqual(calls[0].json, { id: 'o1', code: '000000' });
   });
+
+  it('transmet le repli, l’issue simulée et l’adresse du rappel, et rend le repli', async () => {
+    const repli = { will_run: true, state: 'watching', steps: [{ channel: 'email', will_run: true, reason: null, message_id: null }] };
+    const { fm, calls } = monter([json(201, { id: 'o1', status: 'pending', fallback: repli })]);
+    const fallback = [{ channel: 'email', to: 'a@b.test', from: 'no-reply@b.test', content: { text: 'Code : {code}' } }];
+    const otp = await fm.otp.request({ to: '1', fallback, test_outcome: 'failed', callback_url: 'https://exemple.test/repli' });
+    assert.deepEqual(calls[0].json, {
+      channel: 'sms', to: '1', fallback, test_outcome: 'failed', callback_url: 'https://exemple.test/repli',
+    });
+    assert.equal(otp.fallback.state, 'watching');
+    assert.equal(otp.fallback.steps[0].channel, 'email');
+  });
 });
 
 describe('idempotence et reprises', () => {
@@ -452,6 +464,18 @@ describe('webhooks', () => {
     assert.equal(Webhook.isGenuine(corps, null, 'whsec'), false);
     assert.equal(Webhook.isGenuine(corps, undefined, 'whsec'), false);
     assert.equal(Webhook.isGenuine(corps, signe(corps), ''), false);
+  });
+
+  it('vérifie le rappel de repli comme les autres', () => {
+    const repli = JSON.stringify({
+      event: 'fallback', id: 'm1', kind: 'message', channel: 'sms', client_reference: null,
+      fallback: { will_run: true, state: 'triggered', steps: [{ channel: 'email', will_run: true, reason: null, message_id: 'm2' }] },
+      event_at: '2026-11-07T10:00:00.000Z',
+    });
+    assert.equal(Webhook.isGenuine(repli, signe(repli), 'whsec'), true);
+    const evenement = JSON.parse(repli);
+    assert.equal(evenement.event, 'fallback');
+    assert.equal(evenement.fallback.state, 'triggered');
   });
 
   it('refuse sans planter une signature de mauvaise longueur', () => {

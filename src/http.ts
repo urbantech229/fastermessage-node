@@ -13,7 +13,7 @@ import {
   ServerError,
 } from './errors.js';
 
-export const VERSION = '0.1.2';
+export const VERSION = '0.2.0';
 
 /** Au-delà, le SDK ne bloque pas votre programme : il rend la main avec RateLimitError. */
 const MAX_RETRY_AFTER_SECONDS = 60;

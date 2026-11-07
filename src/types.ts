@@ -32,11 +32,77 @@ export interface MessageRefund extends OpenRecord {
   refunded_at: string;
 }
 
+/** Canaux qu'une étape de repli peut viser. Seuls `sms` et `email` partent aujourd'hui. */
+export type FallbackChannel = Channel;
+
+export type FallbackState = 'blocked' | 'watching' | 'triggered' | 'not_needed' | 'failed' | 'expired' | (string & {});
+
+export type FallbackReason =
+  | 'channel_not_available'
+  | 'invalid_recipient'
+  | 'sender_not_allowed'
+  | 'channel_not_priced'
+  | 'insufficient_balance'
+  | 'recipient_blocked'
+  | 'destination_not_available'
+  | 'ttl_too_short'
+  | 'rate_limited'
+  | 'account_not_active'
+  | 'send_failed'
+  | (string & {});
+
+/** Issue simulée avec une clé `fm_test_` : refusée en `400` avec une clé réelle. */
+export type TestOutcome = 'failed' | 'delivered';
+
+/** Contenu d'une étape vers l'e-mail : tout est facultatif, l'API complète le reste. */
+export interface FallbackEmailContent extends OpenRecord {
+  subject?: string;
+  text?: string;
+  html?: string;
+}
+
+/** Contenu d'une étape vers le SMS : obligatoire. */
+export type FallbackSmsContent = string | (OpenRecord & { text: string; unicode?: boolean });
+
+interface FallbackStepCommon extends OpenRecord {
+  /** Destinataire du repli : numéro pour le SMS, adresse pour l'e-mail. */
+  to: string;
+  from: string;
+}
+
+export interface SmsFallbackStep extends FallbackStepCommon {
+  channel: 'sms';
+  content: FallbackSmsContent;
+}
+
+export interface EmailFallbackStep extends FallbackStepCommon {
+  channel: 'email';
+  content?: FallbackEmailContent;
+}
+
+/** Acceptées par l'API, mais l'étape répond « non disponible ». */
+export interface OtherFallbackStep extends FallbackStepCommon {
+  channel: 'whatsapp' | 'voice';
+  content?: unknown;
+}
+
+/** Une étape demandée : les étapes sont essayées dans l'ordre du tableau. */
+export type FallbackStep = SmsFallbackStep | EmailFallbackStep | OtherFallbackStep;
+
+/** Ce que l'API dit d'une étape demandée. */
+export interface FallbackStepOutcome extends OpenRecord {
+  channel: FallbackChannel;
+  will_run: boolean;
+  reason: FallbackReason | null;
+  /** Le message de repli parti pour cette étape, s'il y en a un. */
+  message_id: string | null;
+}
+
+/** Le repli rendu par l'API : `null` quand aucun n'a été demandé. */
 export interface FallbackOutcome extends OpenRecord {
   will_run: boolean;
-  reason: string | null;
-  message: string;
-  requested: Channel[];
+  state: FallbackState;
+  steps: FallbackStepOutcome[];
 }
 
 export interface Message extends OpenRecord {
@@ -50,7 +116,9 @@ export interface Message extends OpenRecord {
   currency: string;
   refund: MessageRefund | null;
   client_reference: string | null;
+  /** Sur un message de repli : l'identifiant du message d'origine. */
   fallback_of: string | null;
+  /** `null` sans repli demandé. */
   fallback?: FallbackOutcome | null;
   error: MessageError | null;
   created_at: string;
@@ -61,7 +129,10 @@ export interface Message extends OpenRecord {
 
 interface SendCommon extends OpenRecord {
   to: string;
-  fallback?: unknown[];
+  /** Étapes de repli, dans l'ordre. Refusé par `sms.sendBatch()`. */
+  fallback?: FallbackStep[];
+  /** Avec une clé `fm_test_` seulement. */
+  test_outcome?: TestOutcome;
   callback_url?: string;
   scheduled_at?: string;
   client_reference?: string;
@@ -92,6 +163,8 @@ export interface SendMessageParams extends SendCommon {
 
 export interface SmsBatchLine extends OpenRecord {
   to: string;
+  /** Le lot refuse le repli (`400`). */
+  fallback?: never;
   content?: string | OpenRecord;
   from?: string;
   client_reference?: string;
@@ -102,6 +175,8 @@ export interface SmsBatchLine extends OpenRecord {
 export interface SendSmsBatchParams extends OpenRecord {
   /** De 1 à 500 lignes. */
   messages: SmsBatchLine[];
+  /** Le lot refuse le repli (`400`) : envoyez un par un avec `sms.send()`. */
+  fallback?: never;
   from?: string;
   content?: string | OpenRecord;
   scheduled_at?: string;
@@ -140,12 +215,37 @@ export interface RequestOtpParams extends OpenRecord {
   ttl_seconds?: number;
   template?: string;
   client_reference?: string;
+  /** Repli vers l'e-mail : un `content` propre doit contenir `{code}`. */
+  fallback?: FallbackStep[];
+  /** Avec une clé `fm_test_` seulement. */
+  test_outcome?: TestOutcome;
+  /** Adresse http(s) du rappel de repli ; à défaut, celle du compte. */
+  callback_url?: string;
 }
 
 export interface Otp extends OpenRecord {
   id: string;
   status: string;
   attempts_remaining: number;
+  /** `null` sans repli demandé. */
+  fallback?: FallbackOutcome | null;
+}
+
+/**
+ * Corps du rappel de repli, reconnu à `event === 'fallback'`. Envoyé quand le repli part
+ * (`state: 'triggered'`) ou ne peut pas partir (`state: 'failed'`), jamais avec une clé de test.
+ */
+export interface FallbackWebhookEvent extends OpenRecord {
+  event: 'fallback';
+  /** L'identifiant rendu à l'envoi : le message principal, ou la demande OTP si `kind` vaut `otp`. */
+  id: string;
+  kind: 'message' | 'otp';
+  /** Le canal principal. */
+  channel: Channel;
+  client_reference: string | null;
+  fallback: FallbackOutcome;
+  /** ISO 8601. */
+  event_at: string;
 }
 
 export interface ContactFields extends OpenRecord {
